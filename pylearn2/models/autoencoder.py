@@ -10,6 +10,7 @@ import operator
 import numpy
 import theano
 from theano import tensor
+from theano.compat.python2x import OrderedDict
 
 # Local imports
 from pylearn2.blocks import Block, StackedBlocks
@@ -21,6 +22,11 @@ from pylearn2.space import VectorSpace
 
 theano.config.warn.sum_div_dimshuffle_bug = False
 
+def relu(x):
+    return theano.tensor.switch(x > 0., x, 0.)
+
+def thresholded_relu(x):
+    return theano.tensor.switch(abs(x) > 0.01, x, 0.)
 
 class Autoencoder(Block, Model):
     """
@@ -186,6 +192,20 @@ class Autoencoder(Block, Model):
             name='Wprime',
             borrow=True
         )
+
+    def get_monitoring_channels(self, data):
+        rval = super(Autoencoder, self).get_monitoring_channels(data)
+        assert isinstance(rval, OrderedDict)
+        rval['hidbias_norm'] = self.hidbias.sum()
+        rval['hidbias_min'] = self.hidbias.min()
+        rval['hidbias_max'] = self.hidbias.max()
+        rval['visbias_norm'] = self.visbias.sum()
+        rval['visbias_min'] = self.visbias.min()
+        rval['visbias_max'] = self.visbias.max()
+        rval['weights_norm'] = self.weights.sum()
+        rval['weights_min'] = self.weights.min()
+        rval['weights_max'] = self.weights.max()
+        return rval
 
     def set_visible_size(self, nvis, rng=None):
         """
@@ -368,6 +388,33 @@ class Autoencoder(Block, Model):
     # NotImplementedError).
     get_input_space = Model.get_input_space
     get_output_space = Model.get_output_space
+
+
+class ZeroBiasAutoencoder(Autoencoder):
+    def __init__(self, nvis, nhid, act_enc, act_dec,
+                 tied_weights=False, irange=1e-3, rng=9001,
+                 zero_hidbias=True, zero_visbias=True):
+
+        super(ZeroBiasAutoencoder, self).__init__(
+            nvis,
+            nhid,
+            act_enc,
+            act_dec,
+            tied_weights,
+            irange,
+            rng)
+
+        self.zero_hidbias = zero_hidbias
+        self.zero_visbias = zero_visbias
+
+    @functools.wraps(Autoencoder._modify_updates)
+    def _modify_updates(self, updates):
+        if self.zero_hidbias:
+            hidbias_updated = updates[self.hidbias]
+            updates[self.hidbias] = tensor.clip(hidbias_updated, 0, 0)
+        if self.zero_visbias:
+            visbias_updated = updates[self.visbias]
+            updates[self.visbias] = tensor.clip(visbias_updated, 0, 0)
 
 
 class DenoisingAutoencoder(Autoencoder):
