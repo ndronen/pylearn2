@@ -124,7 +124,7 @@ class CSVDataset(DenseDesignMatrix):
             super(CSVDataset, self).__init__(X=X, y=y)
         else:
             super(CSVDataset, self).__init__(X=X, y=y,
-                                             y_labels=np.max(y) - np.min(y) + 1)
+                                             y_labels=np.max(y) + 1)
 
     def _load_data(self):
         """
